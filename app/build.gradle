@@ -1,0 +1,43 @@
+apply plugin: 'com.android.application'
+
+android {
+    //Chih-Yuan Yang: I need the compileSdkVersion item for Android 6 SDK. Don't remove it. Don't
+    //follow new gradle version's suggestion.
+    compileSdkVersion 23
+
+    defaultConfig {
+        applicationId 'tw.edu.cgu.ai.zenbo'
+        minSdk 23
+        targetSdkVersion 23
+        versionCode 1
+        versionName "1.0"
+        externalNativeBuild {
+            cmake {
+                cppFlags ""
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+    aaptOptions {
+        noCompress 'pb'
+    }
+    externalNativeBuild {
+        cmake {
+            path "CMakeLists.txt"
+        }
+    }
+    namespace 'tw.edu.cgu.ai.zenbo'
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    testImplementation 'junit:junit:4.12'
+    implementation 'com.android.support:appcompat-v7:23.1.1'
+    implementation project(':ZenboSDK')
+    implementation 'com.squareup.okhttp3:okhttp:3.5.0'
+}

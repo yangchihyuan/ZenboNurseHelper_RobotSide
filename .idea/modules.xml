@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/ZenboNurseHelper_RobotSide.iml" filepath="$PROJECT_DIR$/.idea/modules/ZenboNurseHelper_RobotSide.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/ZenboSDK/ZenboNurseHelper_RobotSide.ZenboSDK.iml" filepath="$PROJECT_DIR$/.idea/modules/ZenboSDK/ZenboNurseHelper_RobotSide.ZenboSDK.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/app/ZenboNurseHelper_RobotSide.app.iml" filepath="$PROJECT_DIR$/.idea/modules/app/ZenboNurseHelper_RobotSide.app.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/app/ZenboNurseHelper_RobotSide.app.androidTest.iml" filepath="$PROJECT_DIR$/.idea/modules/app/ZenboNurseHelper_RobotSide.app.androidTest.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/app/ZenboNurseHelper_RobotSide.app.main.iml" filepath="$PROJECT_DIR$/.idea/modules/app/ZenboNurseHelper_RobotSide.app.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/app/ZenboNurseHelper_RobotSide.app.unitTest.iml" filepath="$PROJECT_DIR$/.idea/modules/app/ZenboNurseHelper_RobotSide.app.unitTest.iml" />
+    </modules>
+  </component>
+</project>
