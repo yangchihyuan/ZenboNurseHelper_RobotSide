@@ -305,6 +305,7 @@ public class CameraConnectionFragment extends Fragment {
             }
         );
 
+        //2024/6/24 Chih-Yuan Yang: Here I use a timer to repeatedly check the connecion to the Server
         TimerTask task_check_connection = new TimerTask() {
             public void run() {
                 if (checkBox_enable_connection.isChecked()) {

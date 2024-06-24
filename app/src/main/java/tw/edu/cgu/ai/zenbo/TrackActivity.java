@@ -62,16 +62,24 @@ public class TrackActivity extends Activity {
 
     public final static String DOMAIN = "5823CA7CDACF43EEAF4417D783FB1321";
 
+    //For Stream Live Android Audio to a Server
+    public byte[] buffer;
+    public static DatagramSocket socket;
+    private int port=8897;
+    private int sampleRate = 44100 ; // 44100 for music
+    private int channelConfig = AudioFormat.CHANNEL_CONFIGURATION_STEREO;
+    private int audioFormat = AudioFormat.ENCODING_PCM_16BIT;
+    int minBufSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat);
+    private boolean status = true;
+
+
+    AudioRecord recorder;
+
+
     @Override
     protected void onCreate(final Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-//    getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        //Chih-Yuan Yang: setContentView is a function of the Activity class. It can change the page layout
-        //but keeps variables unchanged.
-        //This is the most necessary task in the onCreate() callback function.
-        //I am confused here because my layout/activity_camera.xml is almost empty. Does this statement matter?
-        //The "activity_camera" is the src/main/res/layout/activity_camera.xml, but the content is almost empty.
         setContentView(R.layout.activity_camera);
 
         if (hasPermission()) {
