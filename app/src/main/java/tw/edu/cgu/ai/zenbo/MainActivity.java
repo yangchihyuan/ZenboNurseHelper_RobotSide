@@ -61,7 +61,10 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.DatagramSocket;
+import java.net.DatagramPacket;
+import java.net.InetAddress;
 import java.net.Socket;
+import java.net.UnknownHostException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -89,17 +92,6 @@ public class MainActivity extends Activity {
     private static final String PERMISSION_RECORD_AUDIO = Manifest.permission.RECORD_AUDIO;
 
     public RobotAPI mRobotAPI;
-
-    //For Stream Live Android Audio to a Server
-    public byte[] buffer;
-    public static DatagramSocket socket_udp;
-    private int port=8897;
-    private int sampleRate = 44100 ; // 44100 for music
-    private int channelConfig = AudioFormat.CHANNEL_CONFIGURATION_STEREO;
-    private int audioFormat = AudioFormat.ENCODING_PCM_16BIT;
-    int minBufSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat);
-    private boolean status = true;
-
     private static final Logger LOGGER = new Logger();
 
     private KeyPointView keypointView;
@@ -250,8 +242,7 @@ public class MainActivity extends Activity {
             new Runnable() {
                 @Override
                 public void run() {
-                    Toast toast = Toast.makeText(MainActivity.this, text, Toast.LENGTH_SHORT);
-                    toast.show();
+                    Toast.makeText(MainActivity.this, text, Toast.LENGTH_SHORT).show();
                 }
             }
         );
@@ -259,6 +250,11 @@ public class MainActivity extends Activity {
 
     AudioRecord recorder;
 
+    private int sampleRate = 44100 ; // 44100 for music
+    private int channelConfig = AudioFormat.CHANNEL_IN_STEREO;
+    private int audioFormat = AudioFormat.ENCODING_PCM_16BIT;
+    int minBufSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat);
+    private boolean status = true;
 
     @Override
     protected void onCreate(final Bundle savedInstanceState) {
@@ -468,6 +464,8 @@ public class MainActivity extends Activity {
             mTextureView.setSurfaceTextureListener(surfaceTextureListener);
         }
 
+        status = true;
+        startStreaming();
     }
 
     @Override
@@ -482,9 +480,13 @@ public class MainActivity extends Activity {
         }
         closeCamera();
         stopthreadImageListener();
+        status = false;
+        recorder.release();
+        Log.d("VS","Recorder released");
+
 
         super.onPause();
-        mRobotAPI.robot.unregisterListenCallback();
+//        mRobotAPI.robot.unregisterListenCallback();
         mRobotAPI.robot.setExpression(RobotFace.DEFAULT);
     }
 
@@ -654,7 +656,7 @@ public class MainActivity extends Activity {
         return path + "/Captures/" + mDateFormat.format(currentTime) + ".mp4";
     }
 
-    //2024/6/25: Do I need to record videos?
+    //2024/6/25: This function works, and a file will be save in Zenbo's storage. It uses MediaRecorder.
     private void startRecordingVideo() {
         if (null == mCameraDevice || !mTextureView.isAvailable() || null == mPreviewSize) {
             return;
@@ -703,6 +705,7 @@ public class MainActivity extends Activity {
 
                 @Override
                 public void onConfigureFailed(@NonNull CameraCaptureSession cameraCaptureSession) {
+                    showToast("Failed");
 //                    Activity activity = getActivity();
 //                    if (null != activity) {
 //                        Toast.makeText(activity, "Failed", Toast.LENGTH_SHORT).show();
@@ -778,6 +781,7 @@ public class MainActivity extends Activity {
 
                         @Override
                         public void onConfigureFailed(@NonNull CameraCaptureSession session) {
+                            showToast("Failed");
 //                            Activity activity = getActivity();
 //                            if (null != activity) {
 //                                Toast.makeText(activity, "Failed", Toast.LENGTH_SHORT).show();
@@ -788,6 +792,53 @@ public class MainActivity extends Activity {
             e.printStackTrace();
         }
         mPreviewListener.initialize(handlerSendToServer, inputView, mActionRunnable);
+    }
+
+    public void startStreaming() {
+        Thread streamThread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    DatagramSocket socket = new DatagramSocket();
+                    Log.d("VS", "Socket Created");
+
+                    byte[] buffer = new byte[minBufSize];
+
+                    Log.d("VS","Buffer created of size " + minBufSize);
+
+                    String ServerURL = editText_Server.getText().toString();
+                    int PortNumber = Integer.parseInt(editText_Port.getText().toString());
+
+                    final InetAddress destination = InetAddress.getByName(ServerURL);
+                    Log.d("VS", "Address retrieved");
+
+
+                    recorder = new AudioRecord(MediaRecorder.AudioSource.MIC,sampleRate,channelConfig,audioFormat,minBufSize*10);
+                    Log.d("VS", "Recorder initialized");
+
+                    recorder.startRecording();
+
+
+                    while(status) {
+                        //reading data from MIC into buffer
+                        minBufSize = recorder.read(buffer, 0, buffer.length);
+
+                        //putting buffer in the packet
+                        DatagramPacket packet = new DatagramPacket (buffer,buffer.length,destination,PortNumber+2);
+
+                        socket.send(packet);
+                        System.out.println("MinBufferSize: " +minBufSize);
+                    }
+                } catch(UnknownHostException e) {
+                    Log.e("VS", "UnknownHostException");
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    Log.e("VS", "IOException");
+                }
+            }
+
+        });
+        streamThread.start();
     }
 
 }
