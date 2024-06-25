@@ -24,8 +24,8 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.app.Activity;
-import android.app.Fragment;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.graphics.ImageFormat;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
@@ -37,34 +37,30 @@ import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.ImageReader;
-import android.media.MediaRecorder;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.support.annotation.NonNull;
-import android.util.Log;
 import android.util.Size;
-import android.view.LayoutInflater;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.Button;
+import android.view.WindowManager;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.Toast;
 
 import com.asus.robotframework.API.RobotAPI;
-
-import tw.edu.cgu.ai.zenbo.env.Logger;
+import com.asus.robotframework.API.RobotFace;
 
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.DatagramSocket;
 import java.net.Socket;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -76,13 +72,39 @@ import java.util.TimerTask;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
+import android.media.AudioFormat;
+import android.media.AudioRecord;
+import android.media.MediaRecorder;
+import android.util.Log;
+import android.widget.Button;
 
-//public class CameraConnectionFragment extends Fragment implements View.OnClickListener {
-public class CameraConnectionFragment extends Fragment {
+import tw.edu.cgu.ai.zenbo.env.Logger;
+
+
+public class MainActivity extends Activity {
+    private static final int PERMISSIONS_REQUEST = 1;
+
+    private static final String PERMISSION_CAMERA = Manifest.permission.CAMERA;
+    private static final String PERMISSION_STORAGE = Manifest.permission.WRITE_EXTERNAL_STORAGE;
+    private static final String PERMISSION_RECORD_AUDIO = Manifest.permission.RECORD_AUDIO;
+
+    public RobotAPI mRobotAPI;
+
+    //For Stream Live Android Audio to a Server
+    public byte[] buffer;
+    public static DatagramSocket socket_udp;
+    private int port=8897;
+    private int sampleRate = 44100 ; // 44100 for music
+    private int channelConfig = AudioFormat.CHANNEL_CONFIGURATION_STEREO;
+    private int audioFormat = AudioFormat.ENCODING_PCM_16BIT;
+    int minBufSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat);
+    private boolean status = true;
+
     private static final Logger LOGGER = new Logger();
 
     private KeyPointView keypointView;
-    private InputView inputView;
+    private InputView inputView;     //2024/6/25 Chih-Yuan Yang: The purpose of the inputView is to get a frame from camera's preview.
+    //Thus, I can send the frame to a server.
     private ActionRunnable mActionRunnable = new ActionRunnable();
     private CheckBox checkBox_keep_alert;
     private CheckBox checkBox_enable_connection;
@@ -94,8 +116,6 @@ public class CameraConnectionFragment extends Fragment {
     private MessageView mMessageView_Timestamp;
     private EditText editText_Server;
     private EditText editText_Port;
-    private com.asus.robotframework.API.RobotAPI ZenboAPI;
-    private com.asus.robotframework.API.SpeakConfig speakConfig;
     private DataBuffer m_DataBuffer;
     private MediaRecorder mMediaRecorder;
     private String mVideoAbsolutePath;
@@ -162,6 +182,7 @@ public class CameraConnectionFragment extends Fragment {
     };
 
 
+    //2024/6/25 Chih-Yuan Yang: Why do I need the surfaceTextureListener?
     /**
      * {@link android.view.TextureView.SurfaceTextureListener} handles several lifecycle events on a
      * {@link TextureView}.
@@ -201,11 +222,11 @@ public class CameraConnectionFragment extends Fragment {
                     // This method is called when the camera is opened.  We start camera preview here.
                     mCameraDevice = cameraDevice;
                     boolean bRecordVideo = false;
-                    if( bRecordVideo == false )
-                        startPreview();
-                    else
+                    if(bRecordVideo)
                         //Chih-Yuan Yang 2024/6/16: This is the reason I never record videos. I set the boolean variable fixed.
                         startRecordingVideo();      //The startRecordingVideo is called in a callback function. Is it fine?
+                    else
+                        startPreview();
                     cameraOpenCloseLock.release();  //Chih-Yuan Yang 2024/6/16: The cameraOpenCloseLock is a semaphore.
                 }
 
@@ -221,57 +242,50 @@ public class CameraConnectionFragment extends Fragment {
                     cameraOpenCloseLock.release();
                     cd.close();
                     mCameraDevice = null;
-                    final Activity activity = getActivity();
-                    if (null != activity) {
-                        activity.finish();
-                    }
                 }
             };
 
     private void showToast(final String text) {
-        final Activity activity = getActivity();
-        if (activity != null) {
-            activity.runOnUiThread(
-                    new Runnable() {
-                        @Override
-                        public void run() {
-                            Toast.makeText(activity, text, Toast.LENGTH_SHORT).show();
-                        }
-                    });
+        MainActivity.this.runOnUiThread(
+            new Runnable() {
+                @Override
+                public void run() {
+                    Toast toast = Toast.makeText(MainActivity.this, text, Toast.LENGTH_SHORT);
+                    toast.show();
+                }
+            }
+        );
+    }
+
+    AudioRecord recorder;
+
+
+    @Override
+    protected void onCreate(final Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        setContentView(R.layout.main_activity);
+
+        if (!hasPermission()) {
+            requestPermission();
         }
-    }
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-    public static CameraConnectionFragment newInstance() {
-        return new CameraConnectionFragment();
-    }
+        mRobotAPI = new RobotAPI(this);
 
-    @Override
-    public View onCreateView(
-            final LayoutInflater inflater, final ViewGroup container, final Bundle savedInstanceState) {
-        View v = inflater.inflate(R.layout.camera_connection_fragment, container, false);
-        return v;
-    }
-
-
-    //Chih-Yuan Yang: onViewCreated is a member function of Fragment
-    @Override
-    public void onViewCreated(final View view, final Bundle savedInstanceState) {
-        mTextureView = (AutoFitTextureView) view.findViewById(R.id.texture);
-        inputView = (InputView) view.findViewById(R.id.inputview);
-        keypointView = (KeyPointView) view.findViewById(R.id.keypoint);
-        editText_Port = (EditText) view.findViewById(R.id.editText_Port);
-        editText_Server = (EditText) view.findViewById(R.id.editText_Server);
-        checkBox_keep_alert = (CheckBox) view.findViewById(R.id.checkBox_keepalert);
-        checkBox_enable_connection = (CheckBox) view.findViewById(R.id.checkBox_connect);
-        checkBox_show_face = (CheckBox) view.findViewById(R.id.checkBox_ShowFace);
-        checkBox_dont_move = (CheckBox) view.findViewById(R.id.checkBox_DontMove);
-        checkBox_dont_rotate = (CheckBox) view.findViewById(R.id.checkBox_DontRotate);
-        mMessageView_Detection = (MessageView) view.findViewById(R.id.MessageView_Detection);
-        mMessageView_Timestamp = (MessageView) view.findViewById(R.id.MessageView_Timestamp);
-        ZenboAPI = new RobotAPI(view.getContext());
-        button_close = (Button) view.findViewById(R.id.button_close);
-//        speakConfig = new SpeakConfig();
-//        speakConfig.languageId(SpeakConfig.LANGUAGE_ID_EN_US);   //Does this matter?
+        mTextureView = (AutoFitTextureView) findViewById(R.id.texture);
+        inputView = (InputView) findViewById(R.id.inputview);
+        keypointView = (KeyPointView) findViewById(R.id.keypoint);
+        editText_Port = (EditText) findViewById(R.id.editText_Port);
+        editText_Server = (EditText) findViewById(R.id.editText_Server);
+        checkBox_keep_alert = (CheckBox) findViewById(R.id.checkBox_keepalert);
+        checkBox_enable_connection = (CheckBox) findViewById(R.id.checkBox_connect);
+        checkBox_show_face = (CheckBox) findViewById(R.id.checkBox_ShowFace);
+        checkBox_dont_move = (CheckBox) findViewById(R.id.checkBox_DontMove);
+        checkBox_dont_rotate = (CheckBox) findViewById(R.id.checkBox_DontRotate);
+        mMessageView_Detection = (MessageView) findViewById(R.id.MessageView_Detection);
+        mMessageView_Timestamp = (MessageView) findViewById(R.id.MessageView_Timestamp);
+        button_close = (Button) findViewById(R.id.button_close);
 
         checkBox_show_face.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
@@ -295,17 +309,17 @@ public class CameraConnectionFragment extends Fragment {
         });
 
         button_close.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    ZenboAPI.release();
-                    mActionRunnable.ZenboAPI.release();
-                    getActivity().finish();
-                    getActivity().moveTaskToBack(true);
-                }
-            }
+                                            @Override
+                                            public void onClick(View v) {
+                                                mActionRunnable.ZenboAPI.release();
+                                                finish();
+                                                //moveTaskToBack(true);
+                                            }
+                                        }
         );
 
-        //2024/6/24 Chih-Yuan Yang: Here I use a timer to repeatedly check the connecion to the Server
+        //2024/6/24 Chih-Yuan Yang: Here I use a timer to repeatedly check the connection to the Server
+        //It seems a bad approach. Should I use handler?
         TimerTask task_check_connection = new TimerTask() {
             public void run() {
                 if (checkBox_enable_connection.isChecked()) {
@@ -409,26 +423,47 @@ public class CameraConnectionFragment extends Fragment {
 
         timer_check_disconnection = new java.util.Timer(true);
         timer_check_disconnection.schedule(task_check_connection, 1000, 1000);
+
+        mRobotAPI.robot.speak("哈囉，你好。");
     }
 
     @Override
-    public void onActivityCreated(final Bundle savedInstanceState) {
-        super.onActivityCreated(savedInstanceState);
+    public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
+        switch (requestCode) {
+            case PERMISSIONS_REQUEST: {
+                if (grantResults.length > 0
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED
+                        && grantResults[1] == PackageManager.PERMISSION_GRANTED) {
+                } else {
+                    requestPermission();
+                }
+            }
+        }
     }
 
+
     @Override
-    public void onResume() {
+    protected void onResume() {
         super.onResume();
+        mRobotAPI.robot.setExpression(RobotFace.HIDEFACE);
+        mRobotAPI.robot.setPressOnHeadAction(false);
+        mRobotAPI.robot.setVoiceTrigger(false);     //disable the voice trigger
 
+        View decorView = getWindow().getDecorView();
+//        int uiOptions = View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+//                | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_STABLE;       //Why do I still see the navigation bar.
+        int uiOptions = View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
+        decorView.setSystemUiVisibility(uiOptions);
+
+        //9/13/2018 Chih-Yuan: create a thread to establish a socket connection
         startthreadImageListener();
-//        button_run.requestFocus();
 
         // When the screen is turned off and turned back on, the SurfaceTexture is already
         // available, and "onSurfaceTextureAvailable" will not be called. In that case, we can open
         // a camera and start preview from here (otherwise, we wait until the surface is ready in
         // the SurfaceTextureListener).
         if (mTextureView.isAvailable()) {
-            openCamera();
+            openCamera();   //Chih-Yuan Yang 2024/6/25: This openCamera never be called
         } else {
             mTextureView.setSurfaceTextureListener(surfaceTextureListener);
         }
@@ -436,7 +471,7 @@ public class CameraConnectionFragment extends Fragment {
     }
 
     @Override
-    public void onPause() {
+    protected void onPause() {
         try {
             if (mIsRecordingVideo) {
                 mMediaRecorder.stop();      //Sometimes I get an error message here, why? Maybe I cannot call the stop() if it is not recording.
@@ -447,18 +482,47 @@ public class CameraConnectionFragment extends Fragment {
         }
         closeCamera();
         stopthreadImageListener();
+
         super.onPause();
+        mRobotAPI.robot.unregisterListenCallback();
+        mRobotAPI.robot.setExpression(RobotFace.DEFAULT);
     }
 
-    /**
-     * Opens the camera specified by {@link CameraConnectionFragment#cameraId}.
-     */
+    private boolean hasPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            return checkSelfPermission(PERMISSION_CAMERA) == PackageManager.PERMISSION_GRANTED &&
+                    checkSelfPermission(PERMISSION_STORAGE) == PackageManager.PERMISSION_GRANTED &&
+                    checkSelfPermission(PERMISSION_RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+        } else {
+            return true;
+        }
+    }
+
+    private void requestPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (shouldShowRequestPermissionRationale(PERMISSION_CAMERA) ||
+                    shouldShowRequestPermissionRationale(PERMISSION_STORAGE) ||
+                    shouldShowRequestPermissionRationale(PERMISSION_RECORD_AUDIO)) {
+                Toast.makeText(this, "Camera AND storage permission are required for this demo", Toast.LENGTH_LONG).show();
+            }
+            requestPermissions(new String[]{PERMISSION_CAMERA, PERMISSION_STORAGE, PERMISSION_RECORD_AUDIO}, PERMISSIONS_REQUEST);
+        }
+    }
+
+    @Override
+    protected void onStop()
+    {
+        super.onStop();
+    }
+
+//    /**
+//     * Opens the camera specified by {@link CameraConnectionFragment#cameraId}.
+//     */
     @SuppressLint("MissingPermission")
     @TargetApi(Build.VERSION_CODES.M)
     private void openCamera() {
         mTextureView.setAspectRatio(mPreviewSize.getWidth(), mPreviewSize.getHeight());
-        final Activity activity = getActivity();
-        final CameraManager manager = (CameraManager) activity.getSystemService(Context.CAMERA_SERVICE);
+        final CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
         try {
             if (!cameraOpenCloseLock.tryAcquire(30000, TimeUnit.MILLISECONDS)) {
                 throw new RuntimeException("Time out waiting to lock camera opening.");
@@ -513,16 +577,12 @@ public class CameraConnectionFragment extends Fragment {
     }
 
     private void setUpMediaRecorder() throws IOException {
-        final Activity activity = getActivity();
-        if (null == activity) {
-            return;
-        }
         mMediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
         mMediaRecorder.setVideoSource(MediaRecorder.VideoSource.SURFACE);
         mMediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
         long max_filesize_bytes = 4 * 1024 * 1024 * 1024;  //4Gib
         mMediaRecorder.setMaxFileSize(max_filesize_bytes);      //Does it work?
-        mVideoAbsolutePath = getVideoFilePath(getActivity());
+        mVideoAbsolutePath = getVideoFilePath(this);
         mMediaRecorder.setOutputFile(mVideoAbsolutePath);
         mMediaRecorder.setVideoEncodingBitRate(10000000);
         mMediaRecorder.setVideoFrameRate(30);
@@ -594,6 +654,7 @@ public class CameraConnectionFragment extends Fragment {
         return path + "/Captures/" + mDateFormat.format(currentTime) + ".mp4";
     }
 
+    //2024/6/25: Do I need to record videos?
     private void startRecordingVideo() {
         if (null == mCameraDevice || !mTextureView.isAvailable() || null == mPreviewSize) {
             return;
@@ -633,26 +694,19 @@ public class CameraConnectionFragment extends Fragment {
                 public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
                     mPreviewSession = cameraCaptureSession;
                     updatePreview();
-                    getActivity().runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            // UI
-//                            mButtonVideo.setText(R.string.stop);
-                            mIsRecordingVideo = true;
+                    mIsRecordingVideo = true;
 
-                            // Start recording
-                            //TODO: this statement may cause an exception. Be aware.
-                            mMediaRecorder.start();
-                        }
-                    });
+                    // Start recording
+                    //TODO: this statement may cause an exception. Be aware.
+                    mMediaRecorder.start();
                 }
 
                 @Override
                 public void onConfigureFailed(@NonNull CameraCaptureSession cameraCaptureSession) {
-                    Activity activity = getActivity();
-                    if (null != activity) {
-                        Toast.makeText(activity, "Failed", Toast.LENGTH_SHORT).show();
-                    }
+//                    Activity activity = getActivity();
+//                    if (null != activity) {
+//                        Toast.makeText(activity, "Failed", Toast.LENGTH_SHORT).show();
+//                    }
                 }
             }, handlerImageListener);
         } catch (CameraAccessException | IOException e) {
@@ -696,19 +750,21 @@ public class CameraConnectionFragment extends Fragment {
         }
         try {
             closePreviewSession();
+            //mPreviewBuilder is a CaptureRequest.Builder boject
             mPreviewBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
 
             SurfaceTexture texture = mTextureView.getSurfaceTexture();
             assert texture != null;
-            final Surface surface = new Surface(texture);
+            final Surface surface = new Surface(texture);   //2024/6/25 Chih-Yuan: Why do I need 2 Surface objects? One for Capture, another for preview.
             texture.setDefaultBufferSize(mPreviewSize.getWidth(), mPreviewSize.getHeight());
             Surface previewSurface = new Surface(texture);
-            mPreviewBuilder.addTarget(previewSurface);
+            mPreviewBuilder.addTarget(previewSurface);   //First target: mTextureView, to show on the screen
 
             // Create the reader for the preview frames.
+            // 2024/6/25 Chih-Yuan: mPreviewReader is an ImageReader object, which can read images from a Surface object.
             mPreviewReader = ImageReader.newInstance(mPreviewSize.getWidth(), mPreviewSize.getHeight(), ImageFormat.YUV_420_888, 2);
             mPreviewReader.setOnImageAvailableListener(mPreviewListener, handlerImageListener);
-            mPreviewBuilder.addTarget(mPreviewReader.getSurface());
+            mPreviewBuilder.addTarget(mPreviewReader.getSurface());  //Second target: mPreviewReader, to get the Listener
 
             mCameraDevice.createCaptureSession(
                     Arrays.asList(surface, mPreviewReader.getSurface()),//Collections.singletonList(previewSurface),
@@ -722,10 +778,10 @@ public class CameraConnectionFragment extends Fragment {
 
                         @Override
                         public void onConfigureFailed(@NonNull CameraCaptureSession session) {
-                            Activity activity = getActivity();
-                            if (null != activity) {
-                                Toast.makeText(activity, "Failed", Toast.LENGTH_SHORT).show();
-                            }
+//                            Activity activity = getActivity();
+//                            if (null != activity) {
+//                                Toast.makeText(activity, "Failed", Toast.LENGTH_SHORT).show();
+//                            }
                         }
                     }, handlerImageListener);
         } catch (CameraAccessException e) {
@@ -733,4 +789,5 @@ public class CameraConnectionFragment extends Fragment {
         }
         mPreviewListener.initialize(handlerSendToServer, inputView, mActionRunnable);
     }
+
 }

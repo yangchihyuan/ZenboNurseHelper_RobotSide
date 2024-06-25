@@ -16,4 +16,4 @@ This program runs on a Zenbo robot. Although this problem can be installed in An
 - click the OK button in the Select Deployment Target window, and then the app will be installed and run on the Zenbo robot
 
 # Run the app #
-You can find the app 'Action Recognition' in the robot's Zenbo Apps panel.
+You can find the app 'Zenbo Nurse Helper' in both the robot's Android apps panel and Zenbo Apps panel.
