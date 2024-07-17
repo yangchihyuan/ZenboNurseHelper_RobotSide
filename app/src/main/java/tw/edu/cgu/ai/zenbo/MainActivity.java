@@ -62,6 +62,8 @@ import com.asus.robotframework.API.RobotAPI;
 import com.asus.robotframework.API.RobotFace;
 
 import java.io.BufferedReader;
+import java.io.DataInput;
+import java.io.DataInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -69,6 +71,9 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.Charset;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -160,20 +165,42 @@ public class MainActivity extends Activity {
 //            Log.d("TimerTask", "into task_get_analyzed_results");
             final long timestamp_start = System.currentTimeMillis();
             char[] buffer = new char[2048];
-            String result = "";
-            String line;
+//            String result = "";
+//            String line;
             if (mSocketReceiveResults != null && mSocketReceiveResults.isConnected()) {
 //                Log.d("TimerTask", "Before read");
                 try {
+//                    DataInputStream inputStream = new DataInputStream(mSocketReceiveResults.getInputStream());
+//                    byte[] buffer = new byte[2048];
                     mInputStreamReader = new InputStreamReader(mSocketReceiveResults.getInputStream());
                     mBufferedReader_inFromServer = new BufferedReader(mInputStreamReader);
-                    if( mBufferedReader_inFromServer.ready()) {      //always false, why? Because the server side needs to flush.
+                    if( mBufferedReader_inFromServer.ready()) {
+                        //The buffer contains multiple proto buffer messages
                         int len = mBufferedReader_inFromServer.read(buffer, 0, 2048);
-                        if (len != -1)
-                            Log.d("read data", new String(buffer, 0, len));
-                        Log.d("TimerTask", "After read");
-                    }
-                }catch (Exception e)
+                        if (len != -1) {
+                            String string = new String(buffer,0,len);
+//                            String beginString = new String("BeginOfAMessage");
+//                            String endString = new String("EndOfAMessage");
+//                            while(true) {
+//                                int iBegin = string.indexOf(beginString);
+//                                int iEnd = string.indexOf(endString);
+//                                if (iBegin != -1 && iEnd != -1) {
+//                                    String messageString = string.substring(iBegin + beginString.length()+1, iEnd);  //there is an \n at the end
+//                                    string = string.substring(iEnd + endString.length()+1);
+//                                    ByteBuffer byteBuffer = Charset.forName("UTF-8").encode(messageString);
+                                    ReportData report = ReportData.parseFrom (string.getBytes());
+//                    ReportData report = ReportData.parseFrom (inputStream);
+//                            Log.d("report", report.getKey());
+                            if (report.hasSpeakSentence())
+                                Log.d("Speak Sentence", report.getSpeakSentence());
+                        }
+//                                else
+//                                    break;
+//                            }
+//                        }
+                   }
+                }
+                catch (Exception e)
                 {
                     Log.e("Exception", e.getMessage());
                 }

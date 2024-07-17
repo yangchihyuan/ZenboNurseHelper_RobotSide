@@ -142,9 +142,11 @@ class ImageListener implements OnImageAvailableListener {
                                     OutputStream os = socket.getOutputStream();
                                     os.write(key.getBytes());
                                     os.write(array_JPEG);
+                                    os.write("EndOfAFrame".getBytes());
                                     mbSendSuccessfully = true;
+//                                    Log.d("Send a frame", "No error");
                                 } catch (Exception e) {
-                                    Log.d("Exception", e.getMessage()); //sendto failed: EPIPE (Broken pipe)
+                                    Log.d("Exception Send to Server fails", e.getMessage()); //sendto failed: EPIPE (Broken pipe)
                                     if( e.getMessage().contains("EPIPE"))
                                     {
                                         mbSendSuccessfully = false;
