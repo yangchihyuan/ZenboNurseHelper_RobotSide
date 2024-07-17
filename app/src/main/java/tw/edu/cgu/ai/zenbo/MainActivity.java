@@ -20,6 +20,8 @@
 
 package tw.edu.cgu.ai.zenbo;
 
+import static java.lang.Thread.sleep;
+
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
@@ -44,13 +46,16 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.support.annotation.NonNull;
 import android.util.Size;
+import android.view.KeyEvent;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 import android.view.WindowManager;
+import android.view.inputmethod.EditorInfo;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
 import android.widget.EditText;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.asus.robotframework.API.RobotAPI;
@@ -59,10 +64,9 @@ import com.asus.robotframework.API.RobotFace;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.net.DatagramSocket;
-import java.net.DatagramPacket;
-import java.net.InetAddress;
+import java.io.OutputStream;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.text.SimpleDateFormat;
@@ -82,6 +86,8 @@ import android.util.Log;
 import android.widget.Button;
 
 import tw.edu.cgu.ai.zenbo.env.Logger;
+import ImageAnalyzedResults.AnalyzedResults;
+import ImageAnalyzedResults.AnalyzedResults.ReportData;
 
 
 public class MainActivity extends Activity {
@@ -92,6 +98,7 @@ public class MainActivity extends Activity {
     private static final String PERMISSION_RECORD_AUDIO = Manifest.permission.RECORD_AUDIO;
 
     public RobotAPI mRobotAPI;
+    private ZenboCallback robotCallback;
     private static final Logger LOGGER = new Logger();
 
     private KeyPointView keypointView;
@@ -117,11 +124,12 @@ public class MainActivity extends Activity {
     private Handler handlerImageListener;
     private HandlerThread threadSendToServer;
     private Handler handlerSendToServer;
-    private HandlerThread mActionThread;
-    private Handler mActionHandler;
+    private HandlerThread mThreadAction;
+    private Handler mHandlerAction;
+    private HandlerThread mThreadSendAudio;
+    private Handler mHandlerSendAudio;
     private ImageReader mPreviewReader;     //used to get onImageAvailable, not used in Camera2Video project
     private CaptureRequest.Builder mPreviewBuilder;
-    //    private CaptureRequest mPreviewRequest;
     private final Semaphore cameraOpenCloseLock = new Semaphore(1);
     private boolean mIsRecordingVideo = false;
 
@@ -136,43 +144,66 @@ public class MainActivity extends Activity {
             Manifest.permission.CAMERA,
             Manifest.permission.RECORD_AUDIO
     };
-    Socket socket_result;
-    Socket socket;
+    Socket mSocketReceiveResults;
+    Socket mSocketSendImages;
+    Socket mSocketSendAudio;
+    private String mServerURL;
+    private Integer mPortNumber;
 
     java.util.Timer timer_get_analyzed_results;
-    java.util.Timer timer_check_disconnection;      //I need a timer to check whether the connection is lost.
     InputStreamReader mInputStreamReader;
     BufferedReader mBufferedReader_inFromServer;
 
     TimerTask task_get_analyzed_results = new TimerTask() {
         public void run() {
-            Log.d("CameraConnection", "into task_get_analyzed_results");
+            //2024/7/15 Why does this TimerTask stop when sockets are connected? As a result, I cannot receive messages sent back from the server.
+//            Log.d("TimerTask", "into task_get_analyzed_results");
             final long timestamp_start = System.currentTimeMillis();
+            char[] buffer = new char[2048];
             String result = "";
-            try {
-                if( mBufferedReader_inFromServer != null) {
-                    String line;
-                    while (true)
-                    {
-                        line = mBufferedReader_inFromServer.readLine();
-                        //if the server is down, the line will be null, and there will be an exception.
-                        if( line.equals("EndToken"))
-                            break;
-                        result += (line + "\n");
+            String line;
+            if (mSocketReceiveResults != null && mSocketReceiveResults.isConnected()) {
+//                Log.d("TimerTask", "Before read");
+                try {
+                    mInputStreamReader = new InputStreamReader(mSocketReceiveResults.getInputStream());
+                    mBufferedReader_inFromServer = new BufferedReader(mInputStreamReader);
+                    if( mBufferedReader_inFromServer.ready()) {      //always false, why? Because the server side needs to flush.
+                        int len = mBufferedReader_inFromServer.read(buffer, 0, 2048);
+                        if (len != -1)
+                            Log.d("read data", new String(buffer, 0, len));
+                        Log.d("TimerTask", "After read");
                     }
+                }catch (Exception e)
+                {
+                    Log.e("Exception", e.getMessage());
                 }
-                if (!result.isEmpty()) {
-                    m_DataBuffer.AddNewFrame(result);
-                    mActionHandler.post(mActionRunnable);
-                    keypointView.setResults(m_DataBuffer.getLatestFrame());
-                }
-            } catch (Exception e) {
-                Log.d("Exception", e.getMessage());
+
             }
-            final long timestamp_end = System.currentTimeMillis();
+//            try {
+//                if( mBufferedReader_inFromServer != null) {
+//                    while (mBufferedReader_inFromServer.ready() && (line = mBufferedReader_inFromServer.readLine()) != null )
+//                    {
+//                        Log.d("TimerTask", "BeforeReadline");
+                        //if the server is down, the line will be null, and there will be an exception.
+//                        result += (line + "\n");
+//                        Log.d("TimerTask", "EndReadline");
+//                        if( line.equals("EndToken"))
+//                            break;
+//                        ReportData report = ReportData.parseFrom(line.getBytes());
+//                        Log.d("Server Return", report.getSpeakSentence());
+//                    }
+//                    m_DataBuffer.AddNewFrame(result);
+//                    mHandlerAction.post(mActionRunnable);
+//                    keypointView.setResults(m_DataBuffer.getLatestFrame());
+//                }
+
+
+//            } catch (Exception e) {
+//                Log.d("Exception", e.getMessage());
+//            }
+//            final long timestamp_end = System.currentTimeMillis();
         }
     };
-
 
     //2024/6/25 Chih-Yuan Yang: Why do I need the surfaceTextureListener?
     /**
@@ -248,12 +279,12 @@ public class MainActivity extends Activity {
         );
     }
 
-    AudioRecord recorder;
+//    AudioRecord recorder;
 
     private int sampleRate = 44100 ; // 44100 for music
     private int channelConfig = AudioFormat.CHANNEL_IN_STEREO;
     private int audioFormat = AudioFormat.ENCODING_PCM_16BIT;
-    int minBufSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat);
+    int minBufSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat);   //minBufSize = 5376, but larger is better.
     private boolean status = true;
 
     @Override
@@ -261,13 +292,17 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
 
         setContentView(R.layout.main_activity);
+//        setContentView(R.layout.main_activity_redminote8t);
 
         if (!hasPermission()) {
             requestPermission();
         }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        mRobotAPI = new RobotAPI(this);
+        robotCallback = new ZenboCallback();
+        mRobotAPI = new RobotAPI(this, robotCallback);
+        mActionRunnable.ZenboAPI = mRobotAPI;
+        mActionRunnable.robotCallback = robotCallback;
 
         mTextureView = (AutoFitTextureView) findViewById(R.id.texture);
         inputView = (InputView) findViewById(R.id.inputview);
@@ -282,6 +317,103 @@ public class MainActivity extends Activity {
         mMessageView_Detection = (MessageView) findViewById(R.id.MessageView_Detection);
         mMessageView_Timestamp = (MessageView) findViewById(R.id.MessageView_Timestamp);
         button_close = (Button) findViewById(R.id.button_close);
+
+        mServerURL = editText_Server.getText().toString();;
+        editText_Server.setOnEditorActionListener(new TextView.OnEditorActionListener() {
+            @Override
+            public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
+                if (actionId == EditorInfo.IME_ACTION_DONE) {   // 按下完成按钮，这里和上面imeOptions对应
+                    mServerURL = v.getText().toString();;
+                }
+                return false;//返回true，保留软键盘。false，隐藏软键盘
+            }
+        });
+
+
+        mPortNumber = Integer.parseInt(editText_Port.getText().toString());
+        editText_Port.setOnEditorActionListener(new TextView.OnEditorActionListener() {
+            @Override
+            public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
+                if (actionId == EditorInfo.IME_ACTION_DONE) {   // 按下完成按钮，这里和上面imeOptions对应
+                    mPortNumber = Integer.parseInt(v.getText().toString());
+                }
+                return false;//返回true，保留软键盘。false，隐藏软键盘
+            }
+        });
+
+        checkBox_enable_connection.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                HandlerThread thread = new HandlerThread("SocketProcess");
+                thread.start();
+                Handler handler = new Handler(thread.getLooper());
+                if (isChecked) {
+//                    recorder.startRecording();
+                    handler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                mSocketSendImages = new Socket(mServerURL, mPortNumber);
+                                if( mSocketSendImages.isConnected()) {
+                                    mPreviewListener.set_socket(mSocketSendImages);
+                                }
+                                mSocketReceiveResults = new Socket(mServerURL, mPortNumber + 1);
+//                                mSocketSendAudio = new Socket(mServerURL, mPortNumber + 2);
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+/*
+                            if( mSocketSendAudio != null) {
+                                //I need to move this piece of code somewhere else
+
+                                status = true;
+                                mHandlerSendAudio.post(
+                                    new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            try {
+                                                short[] buffer = new short[minBufSize];   //minBufSize = 5376
+                                                Log.d("VS", "Buffer created of size " + minBufSize);           // every 5 second, the log message occurs. It does not make sense.
+
+                                                OutputStream os = mSocketSendAudio.getOutputStream();
+                                                int readSize;
+                                                while (status) {
+                                                    //reading data from MIC into buffer
+                                                    readSize = recorder.read(buffer, 0, buffer.length);
+                                                    if( readSize >= 0) {
+                                                        byte[] byteBuffer = ShortToByte_Twiddle_Method(buffer);
+                                                        os.write(byteBuffer, 0, readSize * 2);
+                                                    }
+                                                    else
+                                                    {
+                                                        Log.e("recorder","recorder.read() error");
+                                                    }
+                                                }
+                                            } catch (UnknownHostException e) {
+                                                Log.e("VS", "UnknownHostException");
+                                            } catch (IOException e) {
+                                                e.printStackTrace();
+                                                Log.e("VS", "IOException");
+                                            }
+                                        }
+                                    }
+                                );
+                            }
+*/
+                        }
+                    });
+                }
+                else {
+//                    recorder.stop();
+                    handler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            disconnectSockets();
+                        }
+                    });
+                }
+            }
+        });
 
         checkBox_show_face.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
@@ -314,90 +446,6 @@ public class MainActivity extends Activity {
                                         }
         );
 
-        //2024/6/24 Chih-Yuan Yang: Here I use a timer to repeatedly check the connection to the Server
-        //It seems a bad approach. Should I use handler?
-        TimerTask task_check_connection = new TimerTask() {
-            public void run() {
-                if (checkBox_enable_connection.isChecked()) {
-                    if( socket == null )
-                    {
-                        try {
-                            String ServerURL = editText_Server.getText().toString();
-                            int PortNumber = Integer.parseInt(editText_Port.getText().toString());
-                            socket = new Socket(ServerURL, PortNumber);
-                            socket_result = new Socket(ServerURL, PortNumber + 1);
-                            if (socket_result.isConnected()) {
-                                mInputStreamReader = new InputStreamReader(socket_result.getInputStream());
-                                mBufferedReader_inFromServer = new BufferedReader(mInputStreamReader);
-                            }
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
-                        if( socket != null ) {
-                            if (socket.isConnected() && socket_result.isConnected()) {
-                                showToast("Server Connected ");
-                                mPreviewListener.set_socket(socket);
-                            }
-                        }
-                    }
-                    else   //if socket != null
-                    {
-                        if (mPreviewListener.mbSendSuccessfully == false) {
-                            try {
-                                if( socket != null) {
-                                    socket.close();
-                                    if (socket.isClosed())
-                                        socket = null;
-                                }
-
-                                if( socket_result != null) {
-                                    socket_result.close();
-                                    if (socket_result.isClosed())
-                                        socket_result = null;
-                                }
-
-                                String ServerURL = editText_Server.getText().toString();
-                                int PortNumber = Integer.parseInt(editText_Port.getText().toString());
-                                //Chih-Yuan Yang 2024/6/20: I repeatedly build and destroy the
-                                //socket because I cannot guarantee Zenbo can successfully access the WiFi.
-                                socket = new Socket(ServerURL, PortNumber);
-                                socket_result = new Socket(ServerURL, PortNumber + 1);
-                                if (socket_result.isConnected()) {
-                                    mInputStreamReader = new InputStreamReader(socket_result.getInputStream());
-                                    mBufferedReader_inFromServer = new BufferedReader(mInputStreamReader);
-                                }
-
-                                if (socket.isConnected() && socket_result.isConnected()) {
-                                    showToast("Server Connected ");
-                                    mPreviewListener.set_socket(socket);
-                                }
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                            }
-                        }
-                    }
-                }
-                else  //checkBox_enable_connection.isChecked() is false
-                {
-                    try {
-                        if (socket != null) {
-                            socket.close();
-                            if (socket.isClosed())
-                                socket = null;
-                            showToast("Server Disonnected ");
-                        }
-
-                        if (socket_result != null) {
-                            socket_result.close();
-                            if (socket_result.isClosed())
-                                socket_result = null;
-                        }
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                }
-            }
-        };
 
         checkBox_keep_alert.setOnCheckedChangeListener( new CheckBox.OnCheckedChangeListener() {
             @Override
@@ -413,15 +461,10 @@ public class MainActivity extends Activity {
         mActionRunnable.setDataBuffer(m_DataBuffer);
 
         timer_get_analyzed_results = new java.util.Timer(true);
-        long delay = 1000;
-        long period = 33;        //33 ms
-        timer_get_analyzed_results.schedule(task_get_analyzed_results, delay, period);
-
-        timer_check_disconnection = new java.util.Timer(true);
-        timer_check_disconnection.schedule(task_check_connection, 1000, 1000);
+        timer_get_analyzed_results.schedule(task_get_analyzed_results, 1000, 33);
 
         mRobotAPI.robot.speak("哈囉，你好。");
-    }
+    }  //end of onCreate
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
@@ -441,6 +484,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        startThreads();
+
         mRobotAPI.robot.setExpression(RobotFace.HIDEFACE);
         mRobotAPI.robot.setPressOnHeadAction(false);
         mRobotAPI.robot.setVoiceTrigger(false);     //disable the voice trigger
@@ -451,8 +496,10 @@ public class MainActivity extends Activity {
         int uiOptions = View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
         decorView.setSystemUiVisibility(uiOptions);
 
-        //9/13/2018 Chih-Yuan: create a thread to establish a socket connection
-        startthreadImageListener();
+//        if(recorder == null) {
+//            recorder = new AudioRecord(MediaRecorder.AudioSource.MIC, sampleRate, channelConfig, audioFormat, minBufSize * 10);   //5376* 10
+//            Log.d("VS", "Recorder initialized");
+//        }
 
         // When the screen is turned off and turned back on, the SurfaceTexture is already
         // available, and "onSurfaceTextureAvailable" will not be called. In that case, we can open
@@ -463,9 +510,6 @@ public class MainActivity extends Activity {
         } else {
             mTextureView.setSurfaceTextureListener(surfaceTextureListener);
         }
-
-        status = true;
-        startStreaming();
     }
 
     @Override
@@ -479,15 +523,16 @@ public class MainActivity extends Activity {
 
         }
         closeCamera();
-        stopthreadImageListener();
+        stopThreads();
+        disconnectSockets();
         status = false;
-        recorder.release();
-        Log.d("VS","Recorder released");
+//        recorder.release();
+//        recorder = null;
+//        Log.d("VS","Recorder released");
 
 
         super.onPause();
-//        mRobotAPI.robot.unregisterListenCallback();
-        mRobotAPI.robot.setExpression(RobotFace.DEFAULT);
+//        mRobotAPI.robot.setExpression(RobotFace.DEFAULT);
     }
 
     private boolean hasPermission() {
@@ -606,7 +651,7 @@ public class MainActivity extends Activity {
     /**
      * Starts a background thread and its {@link Handler}.
      */
-    private void startthreadImageListener() {
+    private void startThreads() {
         threadImageListener = new HandlerThread("ImageListener");
         threadImageListener.start();
         handlerImageListener = new Handler(threadImageListener.getLooper());
@@ -615,18 +660,24 @@ public class MainActivity extends Activity {
         threadSendToServer.start();
         handlerSendToServer = new Handler(threadSendToServer.getLooper());
 
-        mActionThread = new HandlerThread("ActionThread");
-        mActionThread.start();
-        mActionHandler = new Handler(mActionThread.getLooper());
+        mThreadAction = new HandlerThread("ActionThread");
+        mThreadAction.start();
+        mHandlerAction = new Handler(mThreadAction.getLooper());
+
+        mThreadSendAudio = new HandlerThread(("threadSendAudio"));
+        mThreadSendAudio.start();
+        mHandlerSendAudio = new Handler(mThreadSendAudio.getLooper());
     }
 
     /**
      * Stops the background thread and its {@link Handler}.
      */
-    private void stopthreadImageListener() {
+    private void stopThreads() {
         threadImageListener.quitSafely();
         threadSendToServer.quitSafely();
-        mActionThread.quitSafely();
+        mThreadAction.quitSafely();
+        mThreadSendAudio.quitSafely();
+
         try {
             threadImageListener.join();
             threadImageListener = null;
@@ -636,12 +687,42 @@ public class MainActivity extends Activity {
             threadSendToServer = null;
             handlerSendToServer = null;
 
-            mActionThread.join();
-            mActionThread = null;
-            mActionHandler = null;
+            mThreadAction.join();
+            mThreadAction = null;
+            mHandlerAction = null;
+
+            mThreadSendAudio.join();
+            mThreadSendAudio = null;
+            mHandlerSendAudio = null;
         } catch (final InterruptedException e) {
             LOGGER.e(e, "Exception!");
         }
+    }
+
+    private void disconnectSockets()
+    {
+        try {
+            if( mSocketSendImages != null) {
+                mSocketSendImages.close();
+                if (mSocketSendImages.isClosed())
+                    mSocketSendImages = null;
+            }
+
+            if( mSocketReceiveResults != null) {
+                mSocketReceiveResults.close();
+                if (mSocketReceiveResults.isClosed())
+                    mSocketReceiveResults = null;
+            }
+
+            if( mSocketSendAudio != null) {
+                mSocketSendAudio.close();
+                if (mSocketSendAudio.isClosed())
+                    mSocketSendAudio = null;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
     }
 
     private String getVideoFilePath(Context context) {
@@ -691,7 +772,6 @@ public class MainActivity extends Activity {
             // Start a capture session
             // Once the session starts, we can update the UI and start recording
             mCameraDevice.createCaptureSession(surfaces, new CameraCaptureSession.StateCallback() {
-
                 @Override
                 public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
                     mPreviewSession = cameraCaptureSession;
@@ -794,51 +874,24 @@ public class MainActivity extends Activity {
         mPreviewListener.initialize(handlerSendToServer, inputView, mActionRunnable);
     }
 
-    public void startStreaming() {
-        Thread streamThread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    DatagramSocket socket = new DatagramSocket();
-                    Log.d("VS", "Socket Created");
+    private byte [] ShortToByte_Twiddle_Method(short [] input)
+    {
+        int short_index, byte_index;
+        int iterations = input.length;
 
-                    byte[] buffer = new byte[minBufSize];
+        byte [] buffer = new byte[input.length * 2];
 
-                    Log.d("VS","Buffer created of size " + minBufSize);
+        short_index = byte_index = 0;
 
-                    String ServerURL = editText_Server.getText().toString();
-                    int PortNumber = Integer.parseInt(editText_Port.getText().toString());
+        for(/*NOP*/; short_index != iterations; /*NOP*/)
+        {
+            //if input[short_index] is 10000 = 0x2710. The buffer[0] = 0x10, buffer[1] = 0x27;
+            buffer[byte_index]     = (byte) (input[short_index] & 0x00FF);
+            buffer[byte_index + 1] = (byte) ((input[short_index] & 0xFF00) >> 8);
 
-                    final InetAddress destination = InetAddress.getByName(ServerURL);
-                    Log.d("VS", "Address retrieved");
+            ++short_index; byte_index += 2;
+        }
 
-
-                    recorder = new AudioRecord(MediaRecorder.AudioSource.MIC,sampleRate,channelConfig,audioFormat,minBufSize*10);
-                    Log.d("VS", "Recorder initialized");
-
-                    recorder.startRecording();
-
-
-                    while(status) {
-                        //reading data from MIC into buffer
-                        minBufSize = recorder.read(buffer, 0, buffer.length);
-
-                        //putting buffer in the packet
-                        DatagramPacket packet = new DatagramPacket (buffer,buffer.length,destination,PortNumber+2);
-
-                        socket.send(packet);
-                        System.out.println("MinBufferSize: " +minBufSize);
-                    }
-                } catch(UnknownHostException e) {
-                    Log.e("VS", "UnknownHostException");
-                } catch (IOException e) {
-                    e.printStackTrace();
-                    Log.e("VS", "IOException");
-                }
-            }
-
-        });
-        streamThread.start();
+        return buffer;
     }
-
 }

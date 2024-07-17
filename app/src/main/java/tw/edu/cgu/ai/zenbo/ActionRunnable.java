@@ -3,7 +3,6 @@ SDK.
  */
 package tw.edu.cgu.ai.zenbo;
 
-import com.asus.robotframework.API.RobotAPI;
 import com.asus.robotframework.API.MotionControl;
 import com.asus.robotframework.API.RobotFace;
 
@@ -16,7 +15,7 @@ public class ActionRunnable implements Runnable {
     public int pitchDegree = 30;       //range -15 to 55
     public int yawDegree = 0;          //range -45(left) to 45(right)
     public com.asus.robotframework.API.RobotAPI ZenboAPI;
-    private ZenboCallback robotCallback;
+    public ZenboCallback robotCallback;
     private boolean bWaitingForRobotFinishesMovement = false;
     public boolean bDontMove = false;
     public boolean bDontRotateBody = false;
@@ -83,8 +82,6 @@ public class ActionRunnable implements Runnable {
     public void setMessageView(MessageView MessageView_Detection, MessageView MessageView_Timestamp) {
         mMessageView_Detection = MessageView_Detection;
         mMessageView_Timestamp = MessageView_Timestamp;
-        robotCallback = new ZenboCallback();
-        ZenboAPI = new RobotAPI(MessageView_Detection.getContext(), robotCallback);
         ZenboAPI.motion.moveHead(yawDegree, pitchDegree, MotionControl.SpeedLevel.Head.L3);
         robotCallback.RobotMovementFinished_Head = false;
         robotCallback.RobotMovementFinished_Body = false;
@@ -695,16 +692,11 @@ public class ActionRunnable implements Runnable {
                 newExpression = RobotFace.HIDEFACE;
             }
 
-            //ZenboAPI.robot.queryExpressionStatus();
             //TODO: there is something wrong here, the face may not appear. I had better to set a face if mShowRobotFace is true.
             if( !(newExpression.equals(mFaceStatus)) ) {
                 ZenboAPI.robot.setExpression(newExpression);
                 mFaceStatus = newExpression;
-//                if( newExpression.equals(RobotFace.HAPPY) && mbEyesNoseAllSeen)
-//                    ZenboAPI.robot.speak("歡迎來到IoX中心OpenHouse");  //It is a queue. I can't call the function too much
             }
-
-
             mMessageView_Detection.setString(mMessage_Detection);
         }
     }//end of run

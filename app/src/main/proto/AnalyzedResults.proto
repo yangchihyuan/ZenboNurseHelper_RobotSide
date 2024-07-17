@@ -1,0 +1,11 @@
+syntax = "proto2";
+
+package ImageAnalyzedResults;
+
+message ReportData {
+  required string key = 1;
+  optional int32 openpose_cnt = 2;
+  repeated string openpose_coord = 3;
+  optional string speak_sentence = 4;
+}
+

@@ -59,7 +59,7 @@ public class AnalyzedFrame {
         for(String pr : protobuf_result){
             if(pr.contains("key")) {
                 String[] key_split = pr.substring(6, pr.length() - 1).split("_");
-                timestamp_OnImageAvailable = Long.parseLong(key_split[0]);
+                timestamp_OnImageAvailable = Long.parseLong(key_split[0].substring(7));
                 pitchDegree = Integer.parseInt(key_split[1]);
             }
             else if(pr.contains("openpose_cnt")) {
