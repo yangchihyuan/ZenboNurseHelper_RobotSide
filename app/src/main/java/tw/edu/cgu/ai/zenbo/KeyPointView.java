@@ -140,7 +140,7 @@ public class KeyPointView extends View {
         */
 
         //Draw tracker roi
-        if( analyzedFrame.tracker_roi_x != -1)
+/*        if( analyzedFrame.tracker_roi_x != -1)
         {
             int left = analyzedFrame.tracker_roi_x;
             int right = analyzedFrame.tracker_roi_x + analyzedFrame.tracker_roi_width;
@@ -151,5 +151,7 @@ public class KeyPointView extends View {
             else if( analyzedFrame.roi_rectangle_color == 2)
                 canvas.drawRect(left, top, right, bottom, Paint_Tracker_red);
         }
+
+ */
     }
 }

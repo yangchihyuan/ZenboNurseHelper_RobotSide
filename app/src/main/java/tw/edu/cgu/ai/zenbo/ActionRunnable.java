@@ -193,7 +193,7 @@ public class ActionRunnable implements Runnable {
             else {
 
                 float[][] fMatrix = LatestFrame.fMatrix;
-                List<int[]> yolo_coordinate_person = LatestFrame.yolo_coordinate_person;
+/*                List<int[]> yolo_coordinate_person = LatestFrame.yolo_coordinate_person;
 
                 boolean bFalsePositive = true;
                 for(int idx_yolo_person = 0; idx_yolo_person < LatestFrame.yolo_cnt_person ; idx_yolo_person++) {
@@ -217,12 +217,15 @@ public class ActionRunnable implements Runnable {
                     }
                 }
 
+ */
+
                 //2019/4/26 Let me try temporally ignore this part. I want to know whether I can adjust
                 //OpenPose's parameters to prevent false positives.
-                bFalsePositive = false;
-                if(bFalsePositive)
-                    detection_mode = DetectionMode.FALSE_POSITIVE;
+//                bFalsePositive = false;
+//                if(bFalsePositive)
+//                    detection_mode = DetectionMode.FALSE_POSITIVE;
 
+/*
                 List<int[]> yolo_coordinate_tvmonitor = LatestFrame.yolo_coordinate_tvmonitor;
                 boolean bPersonOnTV = false;
                 for(int idx_yolo_tvmonitor = 0; idx_yolo_tvmonitor < LatestFrame.yolo_cnt_tvmonitor ; idx_yolo_tvmonitor++) {
@@ -247,7 +250,7 @@ public class ActionRunnable implements Runnable {
                 }
                 if(bPersonOnTV)
                     detection_mode = DetectionMode.PEOPLE_ON_TV;
-
+*/
 
                 if( fMatrix[2][2] > 0 && fMatrix[14][2] >0 && fMatrix[15][2] > 0)
                     mbEyesNoseAllSeen = true;
@@ -375,11 +378,13 @@ public class ActionRunnable implements Runnable {
                 }
                 else if( detection_mode == DetectionMode.OTHERWISE )
                 {
+/*
                     if( LatestFrame.tracker_roi_x != -1)
                     {
                         x = (LatestFrame.tracker_roi_x + LatestFrame.tracker_roi_width)/2;
                         y = (LatestFrame.tracker_roi_y + LatestFrame.tracker_roi_height)/2;
                     }
+ */
                 }
                 int rotate_degree = Math.round((x - 320) / 10.2f );  //640 * 62.5053f);
                 int tilt_degree = Math.round((y - 160) / 10.2f);
@@ -592,6 +597,7 @@ public class ActionRunnable implements Runnable {
                     action_mode = 6;
                     dataBuffer.AddAnAction(action_mode);
                     float x=0,y=0;
+                    /*
                     if( LatestFrame.tracker_roi_x != -1)
                     {
                         x = 0.5f*(LatestFrame.tracker_roi_x + LatestFrame.tracker_roi_width);
@@ -654,6 +660,8 @@ public class ActionRunnable implements Runnable {
                         }
 
                     }
+
+                     */
                 }
 
             }

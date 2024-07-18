@@ -1,0 +1,25 @@
+syntax = "proto2";
+
+package ZenboNurseHelperProtobuf;
+
+message ReportAndCommand {
+  optional uint64 time_stamp = 1;
+  optional int32 pitch_degree = 2;
+
+  message OpenPosePose{
+
+    required int64 score = 1;
+
+    message OpenPoseCoordinate{
+      required int64 x = 1;
+      required int64 y = 2;
+      required bool valid = 3;
+    }
+
+    repeated OpenPoseCoordinate coord = 2;
+  }
+
+  repeated OpenPosePose pose = 3;
+  optional string speak_sentence = 4;
+}
+
