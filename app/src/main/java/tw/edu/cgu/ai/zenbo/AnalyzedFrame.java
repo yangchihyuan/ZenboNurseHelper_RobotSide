@@ -44,10 +44,12 @@ public class AnalyzedFrame {
                 ReportAndCommand.OpenPosePose.OpenPoseCoordinate coordinate = pose.getCoord(j);
                 coord[j][0] = (float) coordinate.getX();
                 coord[j][1] = (float) coordinate.getY();
-                if( coordinate.getValid() )
-                    coord[j][2] = 1.0f;
-                else
-                    coord[j][2] = 0.0f;
+                coord[j][2] = (float) coordinate.getValid();
+//                if(coordinate.getValid())
+//                    coord[j][2] = 1.0f;
+//                else
+//                    coord[j][2] = 0f;
+
             }
             openpose_coordinate.add(coord);
         }

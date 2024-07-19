@@ -20,8 +20,6 @@
 
 package tw.edu.cgu.ai.zenbo;
 
-import static java.lang.Thread.sleep;
-
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
@@ -61,19 +59,16 @@ import android.widget.Toast;
 import com.asus.robotframework.API.RobotAPI;
 import com.asus.robotframework.API.RobotFace;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedReader;
-import java.io.DataInput;
 import java.io.DataInputStream;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.net.UnknownHostException;
-import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -91,8 +86,7 @@ import android.util.Log;
 import android.widget.Button;
 
 import tw.edu.cgu.ai.zenbo.env.Logger;
-import ImageAnalyzedResults.AnalyzedResults;
-import ImageAnalyzedResults.AnalyzedResults.ReportData;
+import ZenboNurseHelperProtobuf.ServerSend.ReportAndCommand;
 
 
 public class MainActivity extends Activity {
@@ -158,47 +152,51 @@ public class MainActivity extends Activity {
     java.util.Timer timer_get_analyzed_results;
     InputStreamReader mInputStreamReader;
     BufferedReader mBufferedReader_inFromServer;
+    byte[] mMessagePool = new byte[8192];
+    int effective_length = 0;
+    String beginString = new String("BeginOfAMessage");
+    String endString = new String("EndOfAMessage");
 
     TimerTask task_get_analyzed_results = new TimerTask() {
         public void run() {
-            //2024/7/15 Why does this TimerTask stop when sockets are connected? As a result, I cannot receive messages sent back from the server.
-//            Log.d("TimerTask", "into task_get_analyzed_results");
-            final long timestamp_start = System.currentTimeMillis();
-            char[] buffer = new char[2048];
-//            String result = "";
-//            String line;
             if (mSocketReceiveResults != null && mSocketReceiveResults.isConnected()) {
-//                Log.d("TimerTask", "Before read");
                 try {
-//                    DataInputStream inputStream = new DataInputStream(mSocketReceiveResults.getInputStream());
-//                    byte[] buffer = new byte[2048];
-                    mInputStreamReader = new InputStreamReader(mSocketReceiveResults.getInputStream());
-                    mBufferedReader_inFromServer = new BufferedReader(mInputStreamReader);
-                    if( mBufferedReader_inFromServer.ready()) {
-                        //The buffer contains multiple proto buffer messages
-                        int len = mBufferedReader_inFromServer.read(buffer, 0, 2048);
-                        if (len != -1) {
-                            String string = new String(buffer,0,len);
-//                            String beginString = new String("BeginOfAMessage");
-//                            String endString = new String("EndOfAMessage");
-//                            while(true) {
-//                                int iBegin = string.indexOf(beginString);
-//                                int iEnd = string.indexOf(endString);
-//                                if (iBegin != -1 && iEnd != -1) {
-//                                    String messageString = string.substring(iBegin + beginString.length()+1, iEnd);  //there is an \n at the end
-//                                    string = string.substring(iEnd + endString.length()+1);
-//                                    ByteBuffer byteBuffer = Charset.forName("UTF-8").encode(messageString);
-                                    ReportData report = ReportData.parseFrom (string.getBytes());
-//                    ReportData report = ReportData.parseFrom (inputStream);
-//                            Log.d("report", report.getKey());
-                            if (report.hasSpeakSentence())
-                                Log.d("Speak Sentence", report.getSpeakSentence());
-                        }
-//                                else
-//                                    break;
-//                            }
-//                        }
-                   }
+                    BufferedInputStream dIn = new BufferedInputStream(mSocketReceiveResults.getInputStream());
+                        int length = 4096;
+                        byte[] message  = new byte[length];
+                        int bytesRead = dIn.read(message,0,length);
+                        if (bytesRead != -1) {
+                            System.arraycopy(message, 0, mMessagePool,effective_length,bytesRead);
+                            effective_length += bytesRead;
+                            String string = new String(mMessagePool,0,effective_length, StandardCharsets.US_ASCII);
+
+                            int iBegin = string.indexOf(beginString);
+                            int iEnd = string.indexOf(endString);
+                            if (iBegin != -1 && iEnd != -1) {
+                                byte[] slice = Arrays.copyOfRange(mMessagePool, iBegin + beginString.length(), iEnd);
+                                int remaining = effective_length - (iEnd+endString.length());
+                                if( remaining > 0 ) {
+                                    System.arraycopy(mMessagePool, (iEnd+endString.length()), mMessagePool, 0, remaining);
+                                }
+                                effective_length = remaining;
+
+                                ReportAndCommand report = ReportAndCommand.parseFrom (slice);
+                                if( report.hasTimeStamp()) {
+//                                    Log.d("report", report.toString());
+//                                    m_DataBuffer.AddNewFrame(report);
+//                                    mHandlerAction.post(mActionRunnable);
+//                                    keypointView.setResults(m_DataBuffer.getLatestFrame());
+                                }
+                                if (report.hasSpeakSentence()) {
+                                    Log.d("Speak Sentence", report.getSpeakSentence());
+                                    mRobotAPI.robot.speak(report.getSpeakSentence());
+                                }
+                                if (report.hasX()) {
+                                    Log.d("move body", report.toString());
+                                    mRobotAPI.motion.moveBody(((float)report.getX())/100.0f, ((float)report.getY())/100.0f, report.getTheta());
+                                }
+                            }
+                       }
                 }
                 catch (Exception e)
                 {
@@ -206,29 +204,6 @@ public class MainActivity extends Activity {
                 }
 
             }
-//            try {
-//                if( mBufferedReader_inFromServer != null) {
-//                    while (mBufferedReader_inFromServer.ready() && (line = mBufferedReader_inFromServer.readLine()) != null )
-//                    {
-//                        Log.d("TimerTask", "BeforeReadline");
-                        //if the server is down, the line will be null, and there will be an exception.
-//                        result += (line + "\n");
-//                        Log.d("TimerTask", "EndReadline");
-//                        if( line.equals("EndToken"))
-//                            break;
-//                        ReportData report = ReportData.parseFrom(line.getBytes());
-//                        Log.d("Server Return", report.getSpeakSentence());
-//                    }
-//                    m_DataBuffer.AddNewFrame(result);
-//                    mHandlerAction.post(mActionRunnable);
-//                    keypointView.setResults(m_DataBuffer.getLatestFrame());
-//                }
-
-
-//            } catch (Exception e) {
-//                Log.d("Exception", e.getMessage());
-//            }
-//            final long timestamp_end = System.currentTimeMillis();
         }
     };
 
@@ -306,7 +281,7 @@ public class MainActivity extends Activity {
         );
     }
 
-//    AudioRecord recorder;
+    AudioRecord recorder;
 
     private int sampleRate = 44100 ; // 44100 for music
     private int channelConfig = AudioFormat.CHANNEL_IN_STEREO;
@@ -375,7 +350,7 @@ public class MainActivity extends Activity {
                 thread.start();
                 Handler handler = new Handler(thread.getLooper());
                 if (isChecked) {
-//                    recorder.startRecording();
+                    recorder.startRecording();
                     handler.post(new Runnable() {
                         @Override
                         public void run() {
@@ -385,11 +360,11 @@ public class MainActivity extends Activity {
                                     mPreviewListener.set_socket(mSocketSendImages);
                                 }
                                 mSocketReceiveResults = new Socket(mServerURL, mPortNumber + 1);
-//                                mSocketSendAudio = new Socket(mServerURL, mPortNumber + 2);
+                                mSocketSendAudio = new Socket(mServerURL, mPortNumber + 2);
                             } catch (Exception e) {
                                 e.printStackTrace();
                             }
-/*
+
                             if( mSocketSendAudio != null) {
                                 //I need to move this piece of code somewhere else
 
@@ -426,12 +401,12 @@ public class MainActivity extends Activity {
                                     }
                                 );
                             }
-*/
+
                         }
                     });
                 }
                 else {
-//                    recorder.stop();
+                    recorder.stop();
                     handler.post(new Runnable() {
                         @Override
                         public void run() {
@@ -523,10 +498,10 @@ public class MainActivity extends Activity {
         int uiOptions = View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
         decorView.setSystemUiVisibility(uiOptions);
 
-//        if(recorder == null) {
-//            recorder = new AudioRecord(MediaRecorder.AudioSource.MIC, sampleRate, channelConfig, audioFormat, minBufSize * 10);   //5376* 10
-//            Log.d("VS", "Recorder initialized");
-//        }
+        if(recorder == null) {
+            recorder = new AudioRecord(MediaRecorder.AudioSource.MIC, sampleRate, channelConfig, audioFormat, minBufSize * 10);   //5376* 10
+            Log.d("VS", "Recorder initialized");
+        }
 
         // When the screen is turned off and turned back on, the SurfaceTexture is already
         // available, and "onSurfaceTextureAvailable" will not be called. In that case, we can open
@@ -553,9 +528,11 @@ public class MainActivity extends Activity {
         stopThreads();
         disconnectSockets();
         status = false;
-//        recorder.release();
-//        recorder = null;
-//        Log.d("VS","Recorder released");
+        if( recorder != null) {
+            recorder.release();     //It causes an exception. Why?
+            recorder = null;
+        }
+        Log.d("VS","Recorder released");
 
 
         super.onPause();

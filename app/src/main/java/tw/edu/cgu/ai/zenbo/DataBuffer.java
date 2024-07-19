@@ -1,10 +1,10 @@
 package tw.edu.cgu.ai.zenbo;
 
 import android.util.Log;
-
 import java.util.LinkedList;
-
 import static java.lang.Math.max;
+import ZenboNurseHelperProtobuf.ServerSend.ReportAndCommand;
+
 
 public class DataBuffer {
     AnalyzedFrame[] AnalyzedFrameArray;
@@ -48,12 +48,12 @@ public class DataBuffer {
         bFreezeData = false;
     }
 
-    public void AddNewFrame(String ServerResponse) {
+    public void AddNewFrame(ReportAndCommand report) {
         int new_index = frame_buffer_index + 1;
         if (new_index == AnalyzedFrameArray.length)
             new_index = 0;
         AnalyzedFrameArray[new_index].timestamp_ReceivedFromServer = System.currentTimeMillis();
-        AnalyzedFrameArray[new_index].ParseServerReturn(ServerResponse);
+        AnalyzedFrameArray[new_index].ParseServerReturn(report);
         boolean bshow_process_time = false;
         if( bshow_process_time)
             Log.d("Process time", String.valueOf( AnalyzedFrameArray[new_index].timestamp_ReceivedFromServer - AnalyzedFrameArray[new_index].timestamp_OnImageAvailable));
