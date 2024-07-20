@@ -56,8 +56,11 @@ import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.asus.robotframework.API.ExpressionConfig;
+import com.asus.robotframework.API.MotionControl;
 import com.asus.robotframework.API.RobotAPI;
 import com.asus.robotframework.API.RobotFace;
+import com.asus.robotframework.API.SpeakConfig;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
@@ -187,13 +190,38 @@ public class MainActivity extends Activity {
 //                                    mHandlerAction.post(mActionRunnable);
 //                                    keypointView.setResults(m_DataBuffer.getLatestFrame());
                                 }
-                                if (report.hasSpeakSentence()) {
-                                    Log.d("Speak Sentence", report.getSpeakSentence());
-                                    mRobotAPI.robot.speak(report.getSpeakSentence());
-                                }
                                 if (report.hasX()) {
                                     Log.d("move body", report.toString());
-                                    mRobotAPI.motion.moveBody(((float)report.getX())/100.0f, ((float)report.getY())/100.0f, report.getTheta());
+                                    mRobotAPI.motion.moveBody(((float)report.getX())/100.0f, ((float)report.getY())/100.0f, report.getDegree());
+                                }
+                                if (report.hasYaw()) {
+                                    MotionControl.SpeedLevel.Head speed;
+                                    switch(report.getHeadspeed()){
+                                        case 1:
+                                            speed = MotionControl.SpeedLevel.Head.L1;
+                                            break;
+                                        case 2:
+                                            speed = MotionControl.SpeedLevel.Head.L2;
+                                            break;
+                                        default:
+                                            speed = MotionControl.SpeedLevel.Head.L3;
+                                    }
+                                    mRobotAPI.motion.moveHead(report.getYaw(), report.getPitch(), speed);
+                                }
+                                if (report.hasFace() && report.hasSpeakSentence()) {
+                                    Log.d("report", report.toString());
+                                    RobotFace newFace = FaceIndexToRobotFace(report.getFace());
+                                    ExpressionConfig config = new ExpressionConfig();
+                                    config.volume(report.getVolume()).speed(report.getSpeed()).pitch(report.getSpeakPitch());
+                                    mRobotAPI.robot.setExpression(newFace,report.getSpeakSentence(),config);
+                                } else if (report.hasSpeakSentence()) {
+                                    Log.d("Speak Sentence", report.getSpeakSentence());
+                                    SpeakConfig config = new SpeakConfig();
+                                    config.volume(report.getVolume()).speed(report.getSpeed()).pitch(report.getSpeakPitch());
+                                    mRobotAPI.robot.speak(report.getSpeakSentence(), config);
+                                } else if (report.hasFace()) {
+                                    RobotFace newFace = FaceIndexToRobotFace(report.getFace());
+                                    mRobotAPI.robot.setExpression(newFace);
                                 }
                             }
                        }
@@ -205,6 +233,89 @@ public class MainActivity extends Activity {
 
             }
         }
+    };
+
+    private RobotFace FaceIndexToRobotFace(int FaceIndex)
+    {
+        RobotFace newFace = RobotFace.DEFAULT;
+        switch(FaceIndex) {
+            case 0:
+                newFace = RobotFace.ACTIVE;
+                break;
+            case 1:
+                newFace = RobotFace.AWARE_LEFT;
+                break;
+            case 2:
+                newFace = RobotFace.AWARE_RIGHT;
+                break;
+            case 3:
+                newFace = RobotFace.CONFIDENT;
+                break;
+            case 4:
+                newFace = RobotFace.DEFAULT;
+                break;
+            case 5:
+                newFace = RobotFace.DEFAULT_STILL;
+                break;
+            case 6:
+                newFace = RobotFace.DOUBTING;
+                break;
+            case 7:
+                newFace = RobotFace.EXPECTING;
+                break;
+            case 8:
+                newFace = RobotFace.HAPPY;
+                break;
+            case 9:
+                newFace = RobotFace.HELPLESS;
+                break;
+            case 10:
+                newFace = RobotFace.HIDEFACE;
+                break;
+            case 11:
+                newFace = RobotFace.IMPATIENT;
+                break;
+            case 12:
+                newFace = RobotFace.INNOCENT;
+                break;
+            case 13:
+                newFace = RobotFace.INTERESTED;
+                break;
+            case 14:
+                newFace = RobotFace.LAZY;
+                break;
+            case 15:
+                newFace = RobotFace.PLEASED;
+                break;
+            case 16:
+                newFace = RobotFace.PRETENDING;
+                break;
+            case 17:
+                newFace = RobotFace.PROUD;
+                break;
+            case 18:
+                newFace = RobotFace.QUESTIONING;
+                break;
+            case 19:
+                newFace = RobotFace.SERIOUS;
+                break;
+            case 20:
+                newFace = RobotFace.SHOCKED;
+                break;
+            case 21:
+                newFace = RobotFace.SHY;
+                break;
+            case 22:
+                newFace = RobotFace.SINGING;
+                break;
+            case 23:
+                newFace = RobotFace.TIRED;
+                break;
+            case 24:
+                newFace = RobotFace.WORRIED;
+                break;
+        }
+        return newFace;
     };
 
     //2024/6/25 Chih-Yuan Yang: Why do I need the surfaceTextureListener?

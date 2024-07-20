@@ -23,7 +23,14 @@ message ReportAndCommand {
   optional string speak_sentence = 4;
   optional int32 x = 5;
   optional int32 y = 6;
-  optional int32 theta = 7;
+  optional int32 degree = 7;
   optional int32 bodyspeed = 8;
+  optional int32 yaw = 9;
+  optional int32 pitch = 10;
+  optional int32 headspeed = 11;
+  optional int32 face = 12;
+  optional int32 speed = 13;
+  optional int32 volume = 14;
+  optional int32 speak_pitch = 15;
 }
 
