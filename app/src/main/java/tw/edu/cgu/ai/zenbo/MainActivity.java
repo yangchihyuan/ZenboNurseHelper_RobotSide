@@ -61,6 +61,7 @@ import com.asus.robotframework.API.MotionControl;
 import com.asus.robotframework.API.RobotAPI;
 import com.asus.robotframework.API.RobotFace;
 import com.asus.robotframework.API.SpeakConfig;
+import com.asus.robotframework.API.Utility.PlayAction;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
@@ -90,6 +91,7 @@ import android.widget.Button;
 
 import tw.edu.cgu.ai.zenbo.env.Logger;
 import ZenboNurseHelperProtobuf.ServerSend.ReportAndCommand;
+import ZenboNurseHelperProtobuf.ServerSend.ReportAndCommand.MoveModeEnum;
 
 
 public class MainActivity extends Activity {
@@ -160,6 +162,8 @@ public class MainActivity extends Activity {
     String beginString = new String("BeginOfAMessage");
     String endString = new String("EndOfAMessage");
 
+    boolean bMoveMode_LookForPeople = true;
+
     TimerTask task_get_analyzed_results = new TimerTask() {
         public void run() {
             if (mSocketReceiveResults != null && mSocketReceiveResults.isConnected()) {
@@ -185,13 +189,16 @@ public class MainActivity extends Activity {
 
                                 ReportAndCommand report = ReportAndCommand.parseFrom (slice);
                                 if( report.hasTimeStamp()) {
+                                    if(bMoveMode_LookForPeople) {
 //                                    Log.d("report", report.toString());
-//                                    m_DataBuffer.AddNewFrame(report);
-//                                    mHandlerAction.post(mActionRunnable);
-//                                    keypointView.setResults(m_DataBuffer.getLatestFrame());
+                                        m_DataBuffer.AddNewFrame(report);
+                                        mHandlerAction.post(mActionRunnable);
+                                        keypointView.setResults(m_DataBuffer.getLatestFrame());
+                                    }
                                 }
                                 if (report.hasX()) {
                                     Log.d("move body", report.toString());
+                                    //Why it does not work here? Check it.
                                     mRobotAPI.motion.moveBody(((float)report.getX())/100.0f, ((float)report.getY())/100.0f, report.getDegree());
                                 }
                                 if (report.hasYaw()) {
@@ -222,6 +229,24 @@ public class MainActivity extends Activity {
                                 } else if (report.hasFace()) {
                                     RobotFace newFace = FaceIndexToRobotFace(report.getFace());
                                     mRobotAPI.robot.setExpression(newFace);
+                                }
+                                if (report.hasMovemode()) {
+                                    if( report.getMovemode() == MoveModeEnum.Manual )
+                                    {
+                                        bMoveMode_LookForPeople = false;
+                                    }
+                                    else if( report.getMovemode() == MoveModeEnum.LookForPeople)
+                                    {
+                                        bMoveMode_LookForPeople = true;
+                                    }
+                                }
+                                if (report.hasStopmove())
+                                {
+                                    mRobotAPI.motion.stopMoving();   //this function does not work.
+                                }
+                                if (report.hasPredefinedAction())
+                                {
+                                    mRobotAPI.utility.playAction(PredefinedActionIndexToPlayAction(report.getPredefinedAction()));
                                 }
                             }
                        }
@@ -317,6 +342,133 @@ public class MainActivity extends Activity {
         }
         return newFace;
     };
+
+    private int PredefinedActionIndexToPlayAction(int PredefinedActionIndex)
+    {
+
+        int theAction = PlayAction.Default_1;
+        switch(PredefinedActionIndex) {
+            case 0:
+                theAction = PlayAction.Body_twist_1;
+                break;
+            case 1:
+                theAction = PlayAction.Body_twist_2;
+                break;
+            case 2:
+                theAction = PlayAction.Dance_2_loop;
+                break;
+            case 3:
+                theAction = PlayAction.Dance_3_loop;
+                break;
+            case 4:
+                theAction = PlayAction.Dance_b_1_loop;
+                break;
+            case 5:
+                theAction = PlayAction.Dance_s_1_loop;
+                break;
+            case 6:
+                theAction = PlayAction.Default_1;
+                break;
+            case 7:
+                theAction = PlayAction.Default_2;
+                break;
+            case 8:
+                theAction = PlayAction.Find_face;
+                break;
+            case 9:
+                theAction = PlayAction.Head_down_1;
+                break;
+            case 10:
+                theAction = PlayAction.Head_down_2;
+                break;
+            case 11:
+                theAction = PlayAction.Head_down_3;
+                break;
+            case 12:
+                theAction = PlayAction.Head_down_4;
+                break;
+            case 13:
+                theAction = PlayAction.Head_down_5;
+                break;
+            case 14:
+                theAction = PlayAction.Head_down_7;
+                break;
+            case 15:
+                theAction = PlayAction.Head_twist_1_loop;
+                break;
+            case 16:
+                theAction = PlayAction.Head_up_1;
+                break;
+            case 17:
+                theAction = PlayAction.Head_up_2;
+                break;
+            case 18:
+                theAction = PlayAction.Head_up_3;
+                break;
+            case 19:
+                theAction = PlayAction.Head_up_4;
+                break;
+            case 20:
+                theAction = PlayAction.Head_up_5;
+                break;
+            case 21:
+                theAction = PlayAction.Head_up_6;
+                break;
+            case 22:
+                theAction = PlayAction.Head_up_7;
+                break;
+            case 23:
+                theAction = PlayAction.Music_1_loop;
+                break;
+            case 24:
+                theAction = PlayAction.Nod_1;
+                break;
+            case 25:
+                theAction = PlayAction.Shake_head_1;
+                break;
+            case 26:
+                theAction = PlayAction.Shake_head_2;
+                break;
+            case 27:
+                theAction = PlayAction.Shake_head_3;
+                break;
+            case 28:
+                theAction = PlayAction.Shake_head_4_loop;
+                break;
+            case 29:
+                theAction = PlayAction.Shake_head_5;
+                break;
+            case 30:
+                theAction = PlayAction.Shake_head_6;
+                break;
+            case 32:
+                theAction = PlayAction.Turn_left_1;
+                break;
+            case 33:
+                theAction = PlayAction.Turn_left_2;
+                break;
+            case 34:
+                theAction = PlayAction.Turn_left_reverse_1;
+                break;
+            case 35:
+                theAction = PlayAction.Turn_left_reverse_2;
+                break;
+            case 36:
+                theAction = PlayAction.Turn_right_1;
+                break;
+            case 37:
+                theAction = PlayAction.Turn_right_2;
+                break;
+            case 38:
+                theAction = PlayAction.Turn_right_reverse_1;
+                break;
+            case 39:
+                theAction = PlayAction.Turn_right_reverse_2;
+                break;
+        }
+        return theAction;
+    }
+
 
     //2024/6/25 Chih-Yuan Yang: Why do I need the surfaceTextureListener?
     /**

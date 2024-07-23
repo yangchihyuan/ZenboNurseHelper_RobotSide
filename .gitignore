@@ -8,7 +8,8 @@ app/build
 # 2024/4/25 Chih-Yuan Yang: Unknown files
 *.bin
 .idea/
-app/.cxx
+app/.cxx/
+.git/
 
 # Built application files
 *.apk

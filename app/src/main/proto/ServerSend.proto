@@ -32,5 +32,14 @@ message ReportAndCommand {
   optional int32 speed = 13;
   optional int32 volume = 14;
   optional int32 speak_pitch = 15;
+
+  enum MoveModeEnum{
+    Manual = 0;
+    LookForPeople = 1;
+  }
+
+  optional MoveModeEnum movemode = 16;
+  optional int32 stopmove = 17;
+  optional int32 predefined_action = 18;
 }
 
